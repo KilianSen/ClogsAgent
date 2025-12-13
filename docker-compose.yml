@@ -1,0 +1,8 @@
+services:
+  agent:
+    build:
+        context: .
+        dockerfile: Dockerfile
+    container_name: agent
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
