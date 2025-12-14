@@ -5,9 +5,9 @@ import signal
 import sys
 from src.config import Config
 from src.model.api import AgentRegistration
-from src.api_client import APIClient
-from src.log_collector import LogCollector
-from src.agent_services import DiscoveryService, HeartbeatService
+from src.api import APIClient
+from src.services.log_collector import LogCollector
+from src.services.agent_services import DiscoveryService, HeartbeatService
 
 # Configure logging
 logging.basicConfig(level=Config.LOG_LEVEL, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

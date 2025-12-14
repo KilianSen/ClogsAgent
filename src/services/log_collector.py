@@ -3,7 +3,7 @@ import time
 import queue
 import logging
 from docker.models.containers import Container
-from src.api_client import APIClient
+from src.api import APIClient
 from src.model.api import LogMessage
 
 logger = logging.getLogger(__name__)

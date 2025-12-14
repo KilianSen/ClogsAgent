@@ -1,7 +1,7 @@
 import requests
 import logging
 from src.config import Config
-from src.model.api import Heartbeat, LogMessage, AgentRegistration, AgentState
+from src.model.api import *
 
 logger = logging.getLogger(__name__)
 

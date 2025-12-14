@@ -8,42 +8,28 @@ from docker.models.containers import Container
 from src.config import Config
 from src.docker_api import get_monitored, get_executor
 from src.model.api import StackInfo, ContainerInfo, DockerContainerStatuses, Heartbeat, AgentState
-from src.api_client import APIClient
-from src.log_collector import LogCollector
+from src.api import APIClient
+from src.services.log_collector import LogCollector
 from src.model.model import Context
 
 logger = logging.getLogger(__name__)
 
 def map_container_to_info(container: Container) -> ContainerInfo:
-    # Map docker container status to our enum
-    status_map = {
-        'created': DockerContainerStatuses.CREATED,
-        'running': DockerContainerStatuses.RUNNING,
-        'paused': DockerContainerStatuses.PAUSED,
-        'restarting': DockerContainerStatuses.RESTARTING,
-        'exited': DockerContainerStatuses.EXITED,
-        'removing': DockerContainerStatuses.REMOVING,
-        'dead': DockerContainerStatuses.DEAD
-    }
-
-    status = status_map.get(container.status, DockerContainerStatuses.CUSTOM)
-
-    # Ports can be complex, simplifying for now, jsonify
-    ports: dict[str, str] | None = None
-    if container.ports:
-        ports = {}
-        for port, mappings in container.ports.items():
-            if mappings:
-                ports[port] = ",".join(set([str(mapping['HostPort']) for mapping in mappings]))
-            else:
-                ports[port] = ""
+    status = DockerContainerStatuses.CUSTOM
+    for st in DockerContainerStatuses:
+        if container.status == st.value:
+            status = st
+            break
 
     return ContainerInfo(
         id=container.id,
         name=container.name,
         status=status,
         image=str(container.image.tags[0]) if container.image.tags else "unknown",
-        ports=ports,
+        ports=None \
+        if not container.ports else \
+        {port: "" if mappings is None else ",".join(set([str(mapping['HostPort']) for mapping in mappings]))
+         for port, mappings in container.ports.items()},
         labels=container.labels
     )
 
