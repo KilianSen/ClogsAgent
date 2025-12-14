@@ -12,25 +12,24 @@ class APIClient:
         if Config.API_KEY:
             self.session.headers.update({"X-API-Key": Config.API_KEY})
 
-    def register_agent(self, registration: AgentRegistration):
+    def register_agent(self, agent: Agent) -> str | None:
         try:
             response = self.session.post(
-                f"{self.base_url}/api/agent/register",
-                data=registration.model_dump_json(),
+                f"{self.base_url}/api/agent/",
+                data=agent.model_dump_json(),
                 headers={"Content-Type": "application/json"}
             )
             response.raise_for_status()
             logger.info("Agent registered successfully")
+            return response.json() # Returns agent_id
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to register agent: {e}")
-            # We might want to retry or fail hard here depending on requirements
-            # For now, we log and continue, assuming the backend might handle unregistered heartbeats or we retry later
+            return None
 
-    def send_heartbeat(self, heartbeat: Heartbeat) -> bool:
+    def send_heartbeat(self, agent_id: str) -> bool:
         try:
             response = self.session.post(
-                f"{self.base_url}/api/agent/heartbeat",
-                data=heartbeat.model_dump_json(),
+                f"{self.base_url}/api/agent/{agent_id}/heartbeat",
                 headers={"Content-Type": "application/json"}
             )
             response.raise_for_status()
@@ -40,31 +39,62 @@ class APIClient:
             logger.error(f"Failed to send heartbeat: {e}")
             return False
 
-    def send_state(self, state: AgentState):
+    def register_context(self, agent_id: str, context: Context) -> int | None:
         try:
-            response = self.session.post(
-                f"{self.base_url}/api/agent/state",
-                data=state.model_dump_json(),
+            response = self.session.put(
+                f"{self.base_url}/api/agent/{agent_id}/context/",
+                data=context.model_dump_json(),
                 headers={"Content-Type": "application/json"}
             )
             response.raise_for_status()
-            logger.info("Agent state sent successfully")
+            return response.json()
         except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to send agent state: {e}")
+            logger.error(f"Failed to register context: {e}")
+            return None
 
-    def send_logs(self, logs: list[LogMessage], agent_id: str = None) -> bool:
-        if not logs:
+    def register_container(self, agent_id: str, container: Container) -> str | None:
+        try:
+            response = self.session.post(
+                f"{self.base_url}/api/agent/{agent_id}/container",
+                data=container.model_dump_json(),
+                headers={"Content-Type": "application/json"}
+            )
+            if response.status_code == 409:
+                return container.id
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to register container: {e}")
+            return None
+
+    def update_container_status(self, agent_id: str, container_id: str, status: str):
+        try:
+            response = self.session.post(
+                f"{self.base_url}/api/agent/{agent_id}/container/{container_id}/status",
+                params={"status": status},
+                headers={"Content-Type": "application/json"}
+            )
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to update container status: {e}")
+
+    def delete_container(self, agent_id: str, container_id: str):
+        try:
+            response = self.session.delete(
+                f"{self.base_url}/api/agent/{agent_id}/container/{container_id}/"
+            )
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to delete container: {e}")
+
+    def send_logs(self, agent_id: str, logs: MultiContainerLogTransfer) -> bool:
+        if not logs.container_logs:
             return True
         try:
-            # Assuming the backend accepts a list of logs
-            payload = [log.model_dump() for log in logs]
-            url = f"{self.base_url}/api/agent/logs"
-            if agent_id:
-                url += f"?agent_id={agent_id}"
-
             response = self.session.post(
-                url,
-                json=payload
+                f"{self.base_url}/api/agent/{agent_id}/logs",
+                data=logs.model_dump_json(),
+                headers={"Content-Type": "application/json"}
             )
             response.raise_for_status()
             return True

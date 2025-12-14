@@ -4,7 +4,7 @@ import queue
 import logging
 from docker.models.containers import Container
 from src.api import APIClient
-from src.model.api import LogMessage
+from src.model.api import Log, MultiContainerLogTransfer, MultilineLogTransfer
 
 logger = logging.getLogger(__name__)
 
@@ -81,11 +81,11 @@ class LogCollector:
                     if len(parts) == 2:
                         timestamp_str, log_content = parts
 
-                        log_message = LogMessage(
+                        log_message = Log(
                             container_id=container.id,
-                            log=log_content.strip(),
-                            stream='stdout', # Defaulting to stdout for now
-                            timestamp=time.time()
+                            timestamp=time.time_ns(), # Using current time as parsing docker timestamp is complex
+                            level="INFO", # Defaulting to INFO
+                            message=log_content.strip()
                         )
                         self.log_queue.put(log_message)
                 except Exception as e:
@@ -99,27 +99,41 @@ class LogCollector:
 
     def _log_sender_loop(self):
         batch = []
-        last_send = time.time()
-
         while self.running:
             try:
-                # Wait for logs with timeout to allow batch sending
-                log = self.log_queue.get(timeout=1.0)
-                batch.append(log)
-            except queue.Empty:
-                pass
+                # Collect logs for a batch
+                try:
+                    while len(batch) < 100:
+                        log = self.log_queue.get(timeout=1)
+                        batch.append(log)
+                except queue.Empty:
+                    pass
 
-            current_time = time.time()
-            if batch and (len(batch) >= 100 or current_time - last_send >= 5.0):
-                if self.api_client.send_logs(batch, agent_id=self.agent_id):
-                    batch = []
-                    last_send = current_time
-                else:
-                    # If sending fails, keep the batch and retry later
-                    # Sleep briefly to avoid tight loop if backend is down
-                    time.sleep(2)
-                    # If batch gets too large, we might need to drop old logs or just keep growing until OOM
-                    # For now, let's cap it at 1000 to prevent memory issues
-                    if len(batch) > 1000:
-                        logger.warning("Log batch too large, dropping oldest 100 logs")
-                        batch = batch[100:]
+                if batch:
+                    # Group by container
+                    logs_by_container = {}
+                    for log in batch:
+                        if log.container_id not in logs_by_container:
+                            logs_by_container[log.container_id] = []
+                        logs_by_container[log.container_id].append(log)
+
+                    container_logs_list = []
+                    for container_id, logs in logs_by_container.items():
+                        container_logs_list.append(MultilineLogTransfer(
+                            container_id=container_id,
+                            logs=logs
+                        ))
+
+                    transfer = MultiContainerLogTransfer(
+                        agent_id=self.agent_id,
+                        container_logs=container_logs_list
+                    )
+
+                    if self.api_client.send_logs(self.agent_id, transfer):
+                        batch = []
+                    else:
+                        logger.warning("Failed to send logs, dropping batch")
+                        batch = []
+            except Exception as e:
+                logger.error(f"Error in log sender loop: {e}")
+                time.sleep(5)
