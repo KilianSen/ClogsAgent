@@ -3,6 +3,8 @@ import time
 import logging
 from typing import List
 
+from docker.models.containers import Container
+
 from src.config import Config
 from src.docker_api import get_monitored, get_executor
 from src.model.api import StackInfo, ContainerInfo, DockerContainerStatuses, Heartbeat, AgentState
@@ -12,7 +14,7 @@ from src.model.model import Context
 
 logger = logging.getLogger(__name__)
 
-def map_container_to_info(container) -> ContainerInfo:
+def map_container_to_info(container: Container) -> ContainerInfo:
     # Map docker container status to our enum
     status_map = {
         'created': DockerContainerStatuses.CREATED,
@@ -26,13 +28,15 @@ def map_container_to_info(container) -> ContainerInfo:
 
     status = status_map.get(container.status, DockerContainerStatuses.CUSTOM)
 
-    # Ports can be complex, simplifying for now
+    # Ports can be complex, simplifying for now, jsonify
     ports: dict[str, str] | None = None
     if container.ports:
         ports = {}
-        for k, v in container.ports.items():
-            if v:
-                ports[k] = str(v)
+        for port, mappings in container.ports.items():
+            if mappings:
+                ports[port] = ",".join(set([str(mapping['HostPort']) for mapping in mappings]))
+            else:
+                ports[port] = ""
 
     return ContainerInfo(
         id=container.id,

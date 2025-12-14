@@ -52,14 +52,18 @@ class APIClient:
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to send agent state: {e}")
 
-    def send_logs(self, logs: list[LogMessage]) -> bool:
+    def send_logs(self, logs: list[LogMessage], agent_id: str = None) -> bool:
         if not logs:
             return True
         try:
             # Assuming the backend accepts a list of logs
             payload = [log.model_dump() for log in logs]
+            url = f"{self.base_url}/api/agent/logs"
+            if agent_id:
+                url += f"?agent_id={agent_id}"
+
             response = self.session.post(
-                f"{self.base_url}/api/agent/logs",
+                url,
                 json=payload
             )
             response.raise_for_status()

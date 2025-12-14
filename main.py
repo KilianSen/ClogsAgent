@@ -32,7 +32,7 @@ def main():
     api_client.register_agent(registration)
 
     # Initialize Services
-    log_collector = LogCollector(api_client)
+    log_collector = LogCollector(api_client, agent_id)
     discovery_service = DiscoveryService(api_client, log_collector, agent_id)
     heartbeat_service = HeartbeatService(api_client, agent_id)
 

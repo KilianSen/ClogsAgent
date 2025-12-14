@@ -9,8 +9,9 @@ from src.model.api import LogMessage
 logger = logging.getLogger(__name__)
 
 class LogCollector:
-    def __init__(self, api_client: APIClient):
+    def __init__(self, api_client: APIClient, agent_id: str):
         self.api_client = api_client
+        self.agent_id = agent_id
         self.threads = {}
         self.stop_events = {}
         self.log_queue = queue.Queue()
@@ -110,7 +111,7 @@ class LogCollector:
 
             current_time = time.time()
             if batch and (len(batch) >= 100 or current_time - last_send >= 5.0):
-                if self.api_client.send_logs(batch):
+                if self.api_client.send_logs(batch, agent_id=self.agent_id):
                     batch = []
                     last_send = current_time
                 else:
