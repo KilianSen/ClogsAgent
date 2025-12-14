@@ -16,6 +16,7 @@ class LogCollector:
         self.log_queue = queue.Queue()
         self.running = False
         self.sender_thread = None
+        self.lock = threading.Lock()
 
     def start(self):
         self.running = True
@@ -24,24 +25,28 @@ class LogCollector:
         self.sender_thread.start()
 
     def stop(self):
-        self.running = False
-        for stop_event in self.stop_events.values():
-            stop_event.set()
+        with self.lock:
+            self.running = False
+            for stop_event in self.stop_events.values():
+                stop_event.set()
         if self.sender_thread:
             self.sender_thread.join()
 
     def update_monitored_containers(self, containers: list[Container]):
-        current_ids = set(self.threads.keys())
-        new_ids = set(c.id for c in containers)
+        with self.lock:
+            if not self.running:
+                return
+            current_ids = set(self.threads.keys())
+            new_ids = set(c.id for c in containers)
 
-        # Stop monitoring removed containers
-        for container_id in current_ids - new_ids:
-            self._stop_collecting(container_id)
+            # Stop monitoring removed containers
+            for container_id in current_ids - new_ids:
+                self._stop_collecting(container_id)
 
-        # Start monitoring new containers
-        for container in containers:
-            if container.id not in self.threads:
-                self._start_collecting(container)
+            # Start monitoring new containers
+            for container in containers:
+                if container.id not in self.threads:
+                    self._start_collecting(container)
 
     def _start_collecting(self, container: Container):
         logger.info(f"Starting log collection for container {container.name} ({container.id[:12]})")
@@ -105,7 +110,15 @@ class LogCollector:
 
             current_time = time.time()
             if batch and (len(batch) >= 100 or current_time - last_send >= 5.0):
-                self.api_client.send_logs(batch)
-                batch = []
-                last_send = current_time
-
+                if self.api_client.send_logs(batch):
+                    batch = []
+                    last_send = current_time
+                else:
+                    # If sending fails, keep the batch and retry later
+                    # Sleep briefly to avoid tight loop if backend is down
+                    time.sleep(2)
+                    # If batch gets too large, we might need to drop old logs or just keep growing until OOM
+                    # For now, let's cap it at 1000 to prevent memory issues
+                    if len(batch) > 1000:
+                        logger.warning("Log batch too large, dropping oldest 100 logs")
+                        batch = batch[100:]

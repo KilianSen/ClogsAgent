@@ -14,3 +14,13 @@ The Clogs Agent communicates with the Clogs Backend via a simple HTTP API.
 
 It sends a heartbeat every 30 seconds to indicate that it is alive.
 
+## Configuration
+
+The agent is configured via environment variables:
+
+- `CLOGS_BACKEND_URL`: URL of the Clogs Backend (default: `http://localhost:8000`)
+- `CLOGS_API_KEY`: API Key for authentication with the backend (optional)
+- `CLOGS_AGENT_HEARTBEAT_INTERVAL`: Interval in seconds for sending heartbeats (default: `30`)
+- `CLOGS_AGENT_DISCOVERY_INTERVAL`: Interval in seconds for discovering new containers (default: `60`)
+- `CLOGS_LOG_LEVEL`: Logging level (default: `INFO`)
+- `CLOGS_MONITORING_TAG`: Docker label to look for when filtering containers (default: `clogs.monitoring.enabled=true`)

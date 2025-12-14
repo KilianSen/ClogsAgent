@@ -1,4 +1,4 @@
-import enum
+import logging
 from functools import lru_cache
 from typing import List
 
@@ -6,9 +6,11 @@ from docker import errors
 from docker import from_env
 from docker.models.containers import Container
 
+from src.config import Config
 from src.model.model import Context, MONITORING_TYPE
 
-MONITORING_TAG="clogs.monitoring.enabled=true"
+logger = logging.getLogger(__name__)
+MONITORING_TAG = Config.MONITORING_TAG
 
 client = from_env()
 
@@ -40,21 +42,21 @@ def get_executor() -> tuple[Context, str | None]:
                 if container_id:
                     break
             except FileNotFoundError:
-                print(f"File {path} not found, skipping.")
+                logger.debug(f"File {path} not found, skipping.")
                 continue
 
         # Fallback: try hostname as container ID
         if not container_id:
             container_id = hostname
             used_hostname = True
-            print(f"Determining container ID failed, using hostname: {container_id}")
+            logger.info(f"Determining container ID failed, using hostname: {container_id}")
 
         return get_container_context(client.containers.get(container_id))
     except errors.NotFound:
         if not used_hostname:
-            print(f"Container with ID {container_id} not found.")
+            logger.warning(f"Container with ID {container_id} not found.")
         if used_hostname:
-            print(f"No container found for ID derived from hostname: {container_id}, most likely running outside a container.")
+            logger.info(f"No container found for ID derived from hostname: {container_id}, most likely running outside a container.")
         return Context.host, None
     except Exception as e:
         import traceback
@@ -125,20 +127,24 @@ def filter_by_tags(all_containers: list[Container], tag_filter: List[str] | None
         return filtered_containers
     return all_containers
 
-def get_monitored(containers: List[Container]=client.containers.list(all=True),tag_filter: List[str] = None, cross_stack_bounds: bool = False) -> MONITORING_TYPE:
+def get_monitored(containers: List[Container] | None = None, tag_filter: List[str] = None, cross_stack_bounds: bool = False, executor: tuple[Context, str] | None = None) -> MONITORING_TYPE:
     """
     Gets all monitored containers, grouped by their context (orphan, compose, stack) and name.
+    :param executor: Tuple of (Context, container name or None) representing the executor container.
     :param containers: List of containers to check.
     :param tag_filter: List of tags to filter by. (See `filter_by_tags` for details.)
     :param cross_stack_bounds: Whether to include containers from other contexts/stacks.
     :return: Dictionary of monitored containers.
     """
+    if containers is None:
+        containers = client.containers.list(all=True)
 
-    executor = get_executor()
+    if executor is None:
+        executor = get_executor()
+
     if executor[0] == Context.host:
         # If running on host, monitor all containers regardless of context (tag filtering still applies)
         cross_stack_bounds = True
-        print("Running in host context.")
 
     monitored: MONITORING_TYPE = {}
     for container in filter_by_tags(containers, tag_filter):
