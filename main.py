@@ -1,3 +1,4 @@
+import os
 import time
 import logging
 import socket
@@ -32,10 +33,26 @@ def main():
         on_host=on_host
     )
 
-    agent_id = api_client.register_agent(agent)
+    # Read existing agent ID from file if exists
+    if os.path.exists(Config.AGENT_ID_FILE):
+        with open(Config.AGENT_ID_FILE, 'r') as f:
+            existing_agent_id = f.read().strip()
+            if existing_agent_id:
+                agent.id = existing_agent_id
+                logger.info(f"Using existing agent ID: {agent.id}")
+
+    agent_id  = agent.id
+    if not agent.id:
+        agent_id = api_client.register_agent(agent)
+
     if not agent_id:
         logger.error("Failed to register agent. Exiting.")
         sys.exit(1)
+    else:
+        # Save agent ID to file
+        with open(Config.AGENT_ID_FILE, 'w') as f:
+            f.write(agent_id)
+
 
     logger.info(f"Agent registered with ID: {agent_id}")
 

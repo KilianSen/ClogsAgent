@@ -1,6 +1,7 @@
 import os
 
 class Config:
+    AGENT_ID_FILE = os.path.join(os.getenv('CLOGS_AGENT_DATA_DIR', '.'), 'agent_id.dat')
     BACKEND_URL = os.getenv("CLOGS_BACKEND_URL", "http://localhost:8000")
     HEARTBEAT_INTERVAL = int(os.getenv("CLOGS_AGENT_HEARTBEAT_INTERVAL", "30"))
     DISCOVERY_INTERVAL = int(os.getenv("CLOGS_AGENT_DISCOVERY_INTERVAL", "60"))

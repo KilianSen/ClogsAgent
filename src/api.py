@@ -20,6 +20,9 @@ class APIClient:
                 headers={"Content-Type": "application/json"}
             )
             response.raise_for_status()
+
+            agent.id = response.content.decode("utf-8")
+
             logger.info("Agent registered successfully")
             return response.json() # Returns agent_id
         except requests.exceptions.RequestException as e:
