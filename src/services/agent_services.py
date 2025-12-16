@@ -4,7 +4,7 @@ import logging
 
 from src.config import Config
 from src.docker_api import get_monitored, get_executor
-from src.model.api import Context as APIContext, Container as APIContainer, Agent
+from src.model.api import Context as APIContext, Container as APIContainer
 from src.api import APIClient
 from src.services.log_collector import LogCollector
 from src.model.model import Context as DiscoveryContext
@@ -22,7 +22,15 @@ class DiscoveryService:
 
         # Local state to track what's registered
         self.registered_contexts = {} # name -> id
+
+        for ctx in self.api_client.get_contexts(self.agent_id):
+            self.registered_contexts[ctx.name] = ctx.id
+
         self.registered_containers = set() # id
+
+        for cont in self.api_client.get_containers(self.agent_id):
+            self.registered_containers.add(cont.id)
+
         self.container_statuses = {} # id -> status
 
     def start(self):
@@ -45,42 +53,46 @@ class DiscoveryService:
         while self.running:
             try:
                 logger.debug("Running discovery...")
-                monitored_data = get_monitored(cross_stack_bounds=False)
+                monitored_data = get_monitored(cross_containerization_bounds=False)
 
                 current_container_ids = set()
                 all_containers_list = []
 
                 for context_enum, stacks in monitored_data.items():
-                    for stack_name, containers in stacks.items():
-                        # Determine Context Name and Type
-                        ctx_name = stack_name if stack_name else f"{context_enum.value}_default"
-                        ctx_type = "compose"
-                        if context_enum == DiscoveryContext.stack:
-                            ctx_type = "swarm"
+                    for context_name, containers in stacks.items():
 
-                        # Register Context
-                        if ctx_name not in self.registered_contexts:
-                            api_context = APIContext(
-                                agent_id=self.agent_id,
-                                name=ctx_name,
-                                type=ctx_type
-                            )
-                            ctx_id = self.api_client.register_context(self.agent_id, api_context)
-                            if ctx_id is not None:
-                                self.registered_contexts[ctx_name] = ctx_id
+                        # Check if context is registered
+                        # If not, register it and get its ID
+                        ctx_id: str | None = None
+
+                        # Orphans have no context to register on server
+                        if context_enum != DiscoveryContext.orphan:
+                            if context_name not in self.registered_contexts:
+                                # Register Context
+                                api_context = APIContext(
+                                    agent_id=self.agent_id,
+                                    name=context_name,
+                                    type=context_enum.value  # type: ignore
+                                )
+                                ctx_id = self.api_client.register_context(self.agent_id, api_context)
+                                if ctx_id:
+                                    self.registered_contexts[context_name] = ctx_id
                             else:
-                                logger.warning(f"Failed to register context {ctx_name}")
+                                ctx_id = self.registered_contexts[context_name]
+
+                            if ctx_id is None:
+                                logger.error(f"Failed to register or retrieve context ID for {context_name}, skipping its containers.")
                                 continue
 
-                        ctx_id = self.registered_contexts.get(ctx_name)
-                        if not ctx_id:
-                            continue
+                        # Process Containers in this context
 
                         for container in containers:
-                            all_containers_list.append(container)
-                            current_container_ids.add(container.id)
+                            container.reload()
 
-                            # Register Container
+                            # Check if container is already registered
+                            # If not, register it
+                            # Then, check and update status if changed
+
                             if container.id not in self.registered_containers:
                                 try:
                                     created_str = container.attrs['Created'][:19]
@@ -108,6 +120,10 @@ class DiscoveryService:
                                 self.api_client.update_container_status(self.agent_id, container.id, current_status)
                                 self.container_statuses[container.id] = current_status
 
+                            # Add to all containers list for log collector
+                            all_containers_list.append(container)
+                            current_container_ids.add(container.id)
+
                 # Update log collector
                 self.log_collector.update_monitored_containers(all_containers_list)
 
@@ -122,6 +138,8 @@ class DiscoveryService:
 
             except Exception as e:
                 logger.error(f"Error in discovery loop: {e}")
+                import traceback
+                traceback.print_exc()
 
             time.sleep(Config.DISCOVERY_INTERVAL)
 

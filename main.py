@@ -4,7 +4,7 @@ import logging
 import socket
 import signal
 import sys
-from src.config import Config
+from src.config import Config, config_load_id, config_save_id
 from src.model.api import Agent
 from src.api import APIClient
 from src.services.log_collector import LogCollector
@@ -34,24 +34,22 @@ def main():
     )
 
     # Read existing agent ID from file if exists
-    if os.path.exists(Config.AGENT_ID_FILE):
-        with open(Config.AGENT_ID_FILE, 'r') as f:
-            existing_agent_id = f.read().strip()
-            if existing_agent_id:
-                agent.id = existing_agent_id
-                logger.info(f"Using existing agent ID: {agent.id}")
+    agent.id = config_load_id()
 
     agent_id  = agent.id
     if not agent.id:
-        agent_id = api_client.register_agent(agent)
+        a = api_client.get_agent(agent_id) if agent_id else None
+        if not a:
+            agent_id = api_client.register_agent(agent)
+        else:
+            agent_id = a.id
 
     if not agent_id:
         logger.error("Failed to register agent. Exiting.")
         sys.exit(1)
-    else:
-        # Save agent ID to file
-        with open(Config.AGENT_ID_FILE, 'w') as f:
-            f.write(agent_id)
+
+    if agent_id != config_load_id() and agent_id is not None:
+        config_save_id(agent_id)
 
 
     logger.info(f"Agent registered with ID: {agent_id}")

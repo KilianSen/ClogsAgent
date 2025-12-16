@@ -127,13 +127,13 @@ def filter_by_tags(all_containers: list[Container], tag_filter: List[str] | None
         return filtered_containers
     return all_containers
 
-def get_monitored(containers: List[Container] | None = None, tag_filter: List[str] = None, cross_stack_bounds: bool = False, executor: tuple[Context, str] | None = None) -> MONITORING_TYPE:
+def get_monitored(containers: List[Container] | None = None, tag_filter: List[str] = None, cross_containerization_bounds: bool = False, executor: tuple[Context, str] | None = None) -> MONITORING_TYPE:
     """
     Gets all monitored containers, grouped by their context (orphan, compose, stack) and name.
     :param executor: Tuple of (Context, container name or None) representing the executor container.
     :param containers: List of containers to check.
     :param tag_filter: List of tags to filter by. (See `filter_by_tags` for details.)
-    :param cross_stack_bounds: Whether to include containers from other contexts/stacks.
+    :param cross_containerization_bounds: Whether to include containers from other contexts.
     :return: Dictionary of monitored containers.
     """
     if containers is None:
@@ -144,14 +144,14 @@ def get_monitored(containers: List[Container] | None = None, tag_filter: List[st
 
     if executor[0] == Context.host:
         # If running on host, monitor all containers regardless of context (tag filtering still applies)
-        cross_stack_bounds = True
+        cross_containerization_bounds = True
 
     monitored: MONITORING_TYPE = {}
     for container in filter_by_tags(containers, tag_filter):
         container.reload()
         container_context, container_context_name = get_container_context(container)
 
-        if not cross_stack_bounds and executor != (container_context, container_context_name):
+        if not cross_containerization_bounds and executor != (container_context, container_context_name):
             continue
 
         if container_context not in monitored:

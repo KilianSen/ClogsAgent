@@ -19,7 +19,7 @@ class Context(BaseModel):
     id: int | None = Field(default=None)
     agent_id: str | None = Field(default=None)
     name: str = Field()
-    type: Literal["compose", "swarm"] = Field()
+    type: Literal["compose", "swarm"] | None = Field(default=None)
 
 
 ### Container Models ###
@@ -30,7 +30,7 @@ class Container(BaseModel):
     """
     id: str | None = Field(default=None)
     agent_id: str = Field()
-    context: int = Field()
+    context: int | None = Field()
     name: str = Field()
     image: str = Field()
     created_at: int = Field()
@@ -45,7 +45,7 @@ class Log(BaseModel):
     """
     Represents a single log entry from a container.
     """
-    id: int | None = Field(default=None)
+    id: str | None = Field(default=None)
     container_id: str = Field()
     timestamp: int = Field()
     level: str = Field()

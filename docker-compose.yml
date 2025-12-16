@@ -6,3 +6,4 @@ services:
     container_name: agent
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    network_mode: host
