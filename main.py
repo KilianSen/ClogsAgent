@@ -37,6 +37,9 @@ def main():
 
     if not agent.id or not api_client.get_agent(agent.id):
         agent.id = api_client.register_agent(agent)
+        if not agent.id:
+            logger.error("Failed to register agent with backend. Exiting.")
+            sys.exit(1)
         Config.save_id(agent.id)
         logger.info(f"Registered new agent with ID: {agent.id}")
     else:
