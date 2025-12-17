@@ -4,7 +4,7 @@ import logging
 import socket
 import signal
 import sys
-from src.config import Config, config_load_id, config_save_id
+from src.config import Config
 from src.model.api import Agent
 from src.api import APIClient
 from src.services.log_collector import LogCollector
@@ -31,13 +31,13 @@ def main():
         heartbeat_interval=Config.HEARTBEAT_INTERVAL,
         discovery_interval=Config.DISCOVERY_INTERVAL,
         on_host=on_host,
-        id=config_load_id()
+        id=Config.load_id()
     )
 
 
     if not agent.id or not api_client.get_agent(agent.id):
         agent.id = api_client.register_agent(agent)
-        config_save_id(agent.id)
+        Config.save_id(agent.id)
         logger.info(f"Registered new agent with ID: {agent.id}")
     else:
         logger.info(f"Using existing agent with ID: {agent.id}")
