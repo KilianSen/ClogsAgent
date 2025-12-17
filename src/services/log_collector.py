@@ -129,7 +129,7 @@ class LogCollector:
                         container_logs=container_logs_list
                     )
 
-                    if self.api_client.upload_agent_logs(self.agent_id, transfer):
+                    if self.api_client.upload_logs(self.agent_id, transfer):
                         batch = []
                     else:
                         logger.warning("Failed to send logs, dropping batch")
