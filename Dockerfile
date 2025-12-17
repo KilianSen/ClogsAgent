@@ -10,6 +10,4 @@ COPY . .
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD python -c "import time, sys; sys.exit(0 if time.time() - float(open('/tmp/healthy').read()) < 90 else 1)"
 
-ENV FLASK_ENV=production
-
 CMD ["python", "main.py"]
