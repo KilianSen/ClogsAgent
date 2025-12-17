@@ -30,34 +30,23 @@ def main():
         hostname=socket.gethostname(),
         heartbeat_interval=Config.HEARTBEAT_INTERVAL,
         discovery_interval=Config.DISCOVERY_INTERVAL,
-        on_host=on_host
+        on_host=on_host,
+        id=config_load_id()
     )
 
-    # Read existing agent ID from file if exists
-    agent.id = config_load_id()
 
-    agent_id  = agent.id
-    if not agent.id:
-        a = api_client.get_agent(agent_id) if agent_id else None
-        if not a:
-            agent_id = api_client.register_agent(agent)
-        else:
-            agent_id = a.id
+    if not agent.id or not api_client.get_agent(agent.id):
+        agent.id = api_client.register_agent(agent)
+        config_save_id(agent.id)
+        logger.info(f"Registered new agent with ID: {agent.id}")
+    else:
+        logger.info(f"Using existing agent with ID: {agent.id}")
 
-    if not agent_id:
-        logger.error("Failed to register agent. Exiting.")
-        sys.exit(1)
-
-    if agent_id != config_load_id() and agent_id is not None:
-        config_save_id(agent_id)
-
-
-    logger.info(f"Agent registered with ID: {agent_id}")
 
     # Initialize Services
-    log_collector = LogCollector(api_client, agent_id)
-    discovery_service = DiscoveryService(api_client, log_collector, agent_id)
-    heartbeat_service = HeartbeatService(api_client, agent_id)
+    log_collector = LogCollector(api_client, agent.id)
+    discovery_service = DiscoveryService(api_client, log_collector, agent.id)
+    heartbeat_service = HeartbeatService(api_client, agent.id)
 
     # Start Services
     log_collector.start()

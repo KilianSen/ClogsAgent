@@ -32,6 +32,7 @@ class LogCollector:
                 stop_event.set()
         if self.sender_thread:
             self.sender_thread.join()
+        logger.info("LogCollector stopped.")
 
     def update_monitored_containers(self, containers: list[Container]):
         with self.lock:
@@ -136,4 +137,4 @@ class LogCollector:
                         batch = []
             except Exception as e:
                 logger.error(f"Error in log sender loop: {e}")
-                time.sleep(5)
+                time.sleep(1)

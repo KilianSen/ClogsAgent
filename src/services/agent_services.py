@@ -42,6 +42,7 @@ class DiscoveryService:
         self.running = False
         if self.thread:
             self.thread.join()
+        logger.info("Discovery Service stopped.")
 
     def _discovery_loop(self):
         logger.info("Starting Discovery Service loop")
@@ -50,7 +51,7 @@ class DiscoveryService:
         if executor[0] == DiscoveryContext.host:
             logger.warning("Discovery Service is running on host context; cross-stack monitoring enabled.")
 
-        while self.running:
+        def inner_loop():
             try:
                 logger.debug("Running discovery...")
                 monitored_data = get_monitored(cross_containerization_bounds=False)
@@ -141,7 +142,13 @@ class DiscoveryService:
                 import traceback
                 traceback.print_exc()
 
-            time.sleep(Config.DISCOVERY_INTERVAL)
+        last_run = time.time() - Config.DISCOVERY_INTERVAL * 2
+        while self.running:
+            if time.time() - last_run < Config.DISCOVERY_INTERVAL:
+                time.sleep(.25)
+                continue
+            inner_loop()
+            last_run = time.time()
 
 class HeartbeatService:
     def __init__(self, api_client: APIClient, agent_id: str):
@@ -159,12 +166,18 @@ class HeartbeatService:
         self.running = False
         if self.thread:
             self.thread.join()
+        logger.info("Heartbeat Service stopped.")
 
     def _heartbeat_loop(self):
         logger.info("Starting Heartbeat Service loop")
+        last_run = time.time() - Config.HEARTBEAT_INTERVAL * 2
         while self.running:
+            if time.time() - last_run < Config.HEARTBEAT_INTERVAL:
+                time.sleep(.25)
+                continue
             try:
                 self.api_client.send_heartbeat(self.agent_id)
             except Exception as e:
                 logger.error(f"Error sending heartbeat: {e}")
-            time.sleep(Config.HEARTBEAT_INTERVAL)
+            finally:
+                last_run = time.time()
