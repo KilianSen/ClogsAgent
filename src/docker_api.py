@@ -151,8 +151,11 @@ def get_monitored(containers: List[Container] | None = None, tag_filter: List[st
         container.reload()
         container_context, container_context_name = get_container_context(container)
 
+        # Todo: If executed as single container in compose/stack, this would result in no monitored containers.
+        # Decide if this is the desired behavior. Probably sensible to add config option to allow cross-boundary monitoring on single container stacks/compose setups.
         if not cross_containerization_bounds and executor != (container_context, container_context_name):
             continue
+
 
         if container_context not in monitored:
             monitored[container_context] = {}
