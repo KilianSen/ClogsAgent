@@ -24,3 +24,8 @@ The agent is configured via environment variables:
 - `CLOGS_AGENT_DISCOVERY_INTERVAL`: Interval in seconds for discovering new containers (default: `60`)
 - `CLOGS_LOG_LEVEL`: Logging level (default: `INFO`)
 - `CLOGS_MONITORING_TAG`: Docker label to look for when filtering containers (default: `clogs.monitoring.enabled=true`)
+
+## Licensing
+- [LICENSE](LICENSE) - AGPL-3.0 (community edition)
+- [Commercial](LICENSE-COMMERCIAL.md) - Enterprise/SaaS licensing
+- [CLA](CLA.md) - Required for contributions
