@@ -63,11 +63,11 @@ class APIClient:
             return False
 
 
-    def update_container_status(self, agent_id: str, container_id: str, status: str) -> bool:
+    def update_container_status(self, agent_id: str, container_id: str, status: str, since: int) -> bool:
         try:
             response = self.session.post(
                 f"{self.base_url}/api/agent/{agent_id}/container/{container_id}/status",
-                params={"status": status},
+                params={"status": status, "since": since},
                 headers={"Content-Type": "application/json"}
             )
             response.raise_for_status()

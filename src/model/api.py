@@ -38,6 +38,7 @@ class Container(BaseModel):
 class ContainerState(BaseModel):
     id: int | None = Field(default=None)
     status: str = Field()
+    since: int = Field()
 
 ### Logging Models ###
 

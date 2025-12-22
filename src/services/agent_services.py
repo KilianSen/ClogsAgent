@@ -102,13 +102,14 @@ class DiscoveryService:
                                     logger.warning(f"Failed to parse created timestamp for {container.name}: {e}")
                                     created_ts = int(time.time())
 
+
                                 api_container = APIContainer(
                                     id=container.id,
                                     agent_id=self.agent_id,
                                     context=ctx_id,
                                     name=container.name,
                                     image=str(container.image.tags[0]) if container.image.tags else "unknown",
-                                    created_at=created_ts
+                                    created_at=created_ts,
                                 )
                                 res = self.api_client.register_container(self.agent_id, api_container)
                                 if res:
@@ -118,7 +119,8 @@ class DiscoveryService:
                             # Update Status
                             current_status = container.status
                             if self.container_statuses.get(container.id) != current_status:
-                                self.api_client.update_container_status(self.agent_id, container.id, current_status)
+
+                                self.api_client.update_container_status(self.agent_id, container.id, current_status, int(time.time()))
                                 self.container_statuses[container.id] = current_status
 
                             # Add to all containers list for log collector
