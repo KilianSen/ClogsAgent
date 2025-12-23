@@ -1,5 +1,7 @@
 # Clogs - Agent
 
+See main Repository: [Clogs](https://github.com/KilianSen/clogs)
+
 _About Clogs_: Clogs, short for "Container Log Status", is three part toolset, to provide visibility into container/stack logs, and their health status. Think of it as an easily deployable statuspage alternative, with more insights into your container logs. See the [main README]() for more information.
 
 The Clogs Agent is a lightweight service that sources logs/metrics from your containers, and ships them to the Clogs Backend for processing and visualization.
