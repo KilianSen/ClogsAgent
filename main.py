@@ -1,4 +1,3 @@
-import os
 import time
 import logging
 import socket
@@ -34,16 +33,33 @@ def main():
         id=Config.load_id()
     )
 
+    max_retries = 30
+    retry_delay = 2
 
-    if not agent.id or not api_client.get_agent(agent.id):
-        agent.id = api_client.register_agent(agent)
-        if not agent.id:
-            logger.error("Failed to register agent with backend. Exiting.")
-            sys.exit(1)
-        Config.save_id(agent.id)
-        logger.info(f"Registered new agent with ID: {agent.id}")
+    for attempt in range(max_retries):
+        if agent.id:
+            # Check if existing agent is valid
+            existing_agent = api_client.get_agent(agent.id)
+            if existing_agent:
+                logger.info(f"Using existing agent with ID: {agent.id}")
+                break
+            else:
+                logger.warning(f"Existing agent ID {agent.id} not found on server. Re-registering.")
+                agent.id = None  # Reset ID to force re-registration
+
+        # Register new agent
+        new_id = api_client.register_agent(agent)
+        if new_id:
+            agent.id = new_id
+            Config.save_id(agent.id)
+            logger.info(f"Registered new agent with ID: {agent.id}")
+            break
+
+        logger.info(f"Registration failed. Retrying in {retry_delay} seconds... (Attempt {attempt + 1}/{max_retries})")
+        time.sleep(retry_delay)
     else:
-        logger.info(f"Using existing agent with ID: {agent.id}")
+        logger.error("Failed to register agent with backend after multiple attempts. Exiting.")
+        sys.exit(1)
 
 
     # Initialize Services
