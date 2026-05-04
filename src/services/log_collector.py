@@ -1,10 +1,13 @@
 import threading
 import time
-import queue
+import sqlite3
 import logging
+import json
+import os
 from docker.models.containers import Container
 from src.api import APIClient
 from src.model.api import Log, MultiContainerLogTransfer, MultilineLogTransfer
+from src.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -14,10 +17,32 @@ class LogCollector:
         self.agent_id = agent_id
         self.threads = {}
         self.stop_events = {}
-        self.log_queue = queue.Queue()
         self.running = False
         self.sender_thread = None
         self.lock = threading.Lock()
+        
+        # Initialize SQLite for persistent queuing
+        self.db_path = os.path.join(os.path.dirname(Config.AGENT_ID_FILE), 'logs.db')
+        self._init_db()
+
+    def _init_db(self):
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        with sqlite3.connect(self.db_path) as conn:
+            # Enable WAL mode for better concurrency
+            conn.execute('PRAGMA journal_mode=WAL')
+            # Set a busy timeout (5 seconds) to wait for locks to clear
+            conn.execute('PRAGMA busy_timeout=5000')
+            
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS pending_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    container_id TEXT,
+                    timestamp INTEGER,
+                    level TEXT,
+                    message TEXT
+                )
+            ''')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_pending_logs_container_id ON pending_logs(container_id)')
 
     def start(self):
         self.running = True
@@ -71,6 +96,15 @@ class LogCollector:
             # tail='0' to only get new logs, follow=True to stream
             # timestamps=True to get timestamp from docker
             logs = container.logs(stream=True, follow=True, tail=0, timestamps=True)
+            
+            # Open its own connection for this thread
+            conn = sqlite3.connect(self.db_path)
+            
+            from datetime import datetime
+            
+            buffer = []
+            last_flush = time.time()
+            
             for line in logs:
                 if stop_event.is_set():
                     break
@@ -81,16 +115,56 @@ class LogCollector:
                     parts = line_str.split(' ', 1)
                     if len(parts) == 2:
                         timestamp_str, log_content = parts
+                        
+                        try:
+                            # Handle Docker RFC3339 timestamps (e.g., 2023-10-27T10:00:00.000000000Z)
+                            # Python's fromisoformat is faster but may need minor tweaking for nanoseconds/Z
+                            ts_fixed = timestamp_str.replace('Z', '+00:00')
+                            # Docker often provides more than 6 digits for microseconds, truncate to 6
+                            if '.' in ts_fixed:
+                                base, rest = ts_fixed.split('.', 1)
+                                micros = rest[:6]
+                                offset = rest[rest.find('+'):] if '+' in rest else rest[rest.find('-'):] if '-' in rest else ''
+                                ts_fixed = f"{base}.{micros}{offset}"
+                            
+                            dt = datetime.fromisoformat(ts_fixed)
+                            ts_ns = int(dt.timestamp() * 10**9)
+                        except Exception as te:
+                            logger.debug(f"Failed to parse docker timestamp '{timestamp_str}', using fallback: {te}")
+                            ts_ns = time.time_ns()
 
-                        log_message = Log(
-                            container_id=container.id,
-                            timestamp=time.time_ns(), # Using current time as parsing docker timestamp is complex
-                            level="INFO", # Defaulting to INFO
-                            message=log_content.strip()
-                        )
-                        self.log_queue.put(log_message)
+                        # Basic log level detection
+                        level = "INFO"
+                        lower_msg = log_content.lower()
+                        if any(k in lower_msg for k in ["error", "crit", "fatal", "fail"]):
+                            level = "ERROR"
+                        elif any(k in lower_msg for k in ["warn", "warning"]):
+                            level = "WARNING"
+                        elif "debug" in lower_msg:
+                            level = "DEBUG"
+
+                        buffer.append((container.id, ts_ns, level, log_content.strip()))
+                        
+                        # Flush if buffer is large or time has passed
+                        if len(buffer) >= 50 or (time.time() - last_flush > 1.0):
+                            conn.executemany(
+                                'INSERT INTO pending_logs (container_id, timestamp, level, message) VALUES (?, ?, ?, ?)',
+                                buffer
+                            )
+                            conn.commit()
+                            buffer = []
+                            last_flush = time.time()
                 except Exception as e:
                     logger.error(f"Error parsing log line: {e}")
+            
+            if buffer:
+                conn.executemany(
+                    'INSERT INTO pending_logs (container_id, timestamp, level, message) VALUES (?, ?, ?, ?)',
+                    buffer
+                )
+                conn.commit()
+                
+            conn.close()
 
         except Exception as e:
             # This happens when container dies or is stopped
@@ -99,18 +173,33 @@ class LogCollector:
             pass
 
     def _log_sender_loop(self):
-        batch = []
+        last_retention_cleanup = 0
         while self.running:
             try:
-                # Collect logs for a batch
-                try:
-                    while len(batch) < 100:
-                        log = self.log_queue.get(timeout=1)
-                        batch.append(log)
-                except queue.Empty:
-                    pass
+                # Batch logs from SQLite
+                with sqlite3.connect(self.db_path) as conn:
+                    # Periodically prune old logs (Retention: 7 days)
+                    current_time = time.time()
+                    if current_time - last_retention_cleanup > 3600: # Every hour
+                        retention_threshold = int((current_time - (7 * 24 * 3600)) * 10**9)
+                        conn.execute('DELETE FROM pending_logs WHERE timestamp < ?', (retention_threshold,))
+                        conn.commit()
+                        last_retention_cleanup = current_time
 
-                if batch:
+                    cursor = conn.cursor()
+                    cursor.execute('SELECT id, container_id, timestamp, level, message FROM pending_logs LIMIT 100')
+                    rows = cursor.fetchall()
+                    
+                    if not rows:
+                        time.sleep(1)
+                        continue
+
+                    ids = [r[0] for r in rows]
+                    batch = [
+                        Log(container_id=r[1], timestamp=r[2], level=r[3], message=r[4])
+                        for r in rows
+                    ]
+
                     # Group by container
                     logs_by_container = {}
                     for log in batch:
@@ -131,10 +220,12 @@ class LogCollector:
                     )
 
                     if self.api_client.upload_logs(self.agent_id, transfer):
-                        batch = []
+                        # Delete sent logs
+                        conn.execute(f'DELETE FROM pending_logs WHERE id IN ({",".join(map(str, ids))})')
+                        conn.commit()
                     else:
-                        logger.warning("Failed to send logs, dropping batch")
-                        batch = []
+                        logger.warning("Failed to send logs, will retry next interval")
+                        time.sleep(5) # Backoff
             except Exception as e:
                 logger.error(f"Error in log sender loop: {e}")
                 time.sleep(1)

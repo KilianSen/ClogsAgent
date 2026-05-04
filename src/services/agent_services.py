@@ -88,13 +88,19 @@ class DiscoveryService:
                         # Process Containers in this context
 
                         for container in containers:
-                            container.reload()
-
+                            # Only reload if we don't have it yet or it was previously active (to detect stop)
+                            # Actually, status might change without us knowing if we don't reload.
+                            # But reloading every 1s is too much. 
+                            # We'll reload only if it's new or every 10th discovery cycle for existing ones, 
+                            # OR we just accept that 'status' might be slightly stale if the docker list is stale.
+                            # Standard docker client list(all=True) is usually fresh enough for status.
+                            
                             # Check if container is already registered
                             # If not, register it
                             # Then, check and update status if changed
 
                             if container.id not in self.registered_containers:
+                                container.reload() # Fresh data for new container
                                 try:
                                     created_str = container.attrs['Created'][:19]
                                     created_ts = int(time.mktime(time.strptime(created_str, "%Y-%m-%dT%H:%M:%S")))

@@ -23,10 +23,14 @@ class APIClient:
             )
             response.raise_for_status()
 
-            agent.id = response.content.decode("utf-8")
+            res = response.json()
+            if isinstance(res, dict) and "id" in res:
+                agent.id = res["id"]
+            else:
+                agent.id = str(res)
 
-            logger.info("Agent registered successfully")
-            return response.json() # Returns agent_id
+            logger.info(f"Agent registered successfully with ID: {agent.id}")
+            return agent.id
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to register agent: {e}")
             return None

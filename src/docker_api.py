@@ -109,7 +109,6 @@ def filter_by_tags(all_containers: list[Container], tag_filter: List[str] | None
     if tag_filter is not None and len(tag_filter) > 0 or len(internal_filter) > 0:
         filtered_containers = []
         for container in all_containers:
-            container.reload()
             labels = container.labels
             if labels is None:
                 continue
@@ -148,7 +147,6 @@ def get_monitored(containers: List[Container] | None = None, tag_filter: List[st
 
     monitored: MONITORING_TYPE = {}
     for container in filter_by_tags(containers, tag_filter):
-        container.reload()
         container_context, container_context_name = get_container_context(container)
 
         # Todo: If executed as single container in compose/stack, this would result in no monitored containers.
