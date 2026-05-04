@@ -54,8 +54,13 @@ class DiscoveryService:
         def inner_loop():
             try:
                 logger.debug("Running discovery...")
-                monitored_data = get_monitored(cross_containerization_bounds=False)
-
+                
+                try:
+                    monitored_data = get_monitored(cross_containerization_bounds=False)
+                except Exception as de:
+                    logger.error(f"Failed to communicate with Docker: {de}")
+                    return # Exit inner_loop and wait for next interval
+                
                 current_container_ids = set()
                 all_containers_list = []
 
